@@ -1,0 +1,26 @@
+---
+interface Props {
+  data: { subject: string; minutes: number }[];
+}
+
+const { data } = Astro.props;
+const maxMinutes = Math.max(...data.map((d) => d.minutes), 1);
+---
+
+<div class="card">
+  <h3>Hours by Subject</h3>
+  <div class="bar-chart" style="margin-top: 1rem;">
+    {data.map((d) => (
+      <div class="bar-row">
+        <div class="bar-label">{d.subject}</div>
+        <div class="bar-track">
+          <div
+            class="bar-fill"
+            style={`width: ${(d.minutes / maxMinutes) * 100}%`}
+          />
+        </div>
+        <div class="bar-value">{(d.minutes / 60).toFixed(1)}h</div>
+      </div>
+    ))}
+  </div>
+</div>

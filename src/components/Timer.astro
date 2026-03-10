@@ -1,0 +1,78 @@
+---
+// No server-side props needed — all logic is client-side JS
+---
+
+<div class="card" id="timer-widget">
+  <h3>Stopwatch</h3>
+  <div class="timer-display" id="timer-display">00:00:00</div>
+  <div class="timer-controls">
+    <button class="btn btn-primary" id="timer-start">Start</button>
+    <button class="btn btn-secondary" id="timer-pause" disabled>Pause</button>
+    <button class="btn btn-danger" id="timer-stop" disabled>Stop &amp; Use Time</button>
+  </div>
+</div>
+
+<script>
+  const display = document.getElementById('timer-display')!;
+  const startBtn = document.getElementById('timer-start') as HTMLButtonElement;
+  const pauseBtn = document.getElementById('timer-pause') as HTMLButtonElement;
+  const stopBtn = document.getElementById('timer-stop') as HTMLButtonElement;
+
+  let elapsed = 0; // seconds
+  let interval: ReturnType<typeof setInterval> | null = null;
+  let running = false;
+
+  function formatTime(totalSeconds: number): string {
+    const h = Math.floor(totalSeconds / 3600).toString().padStart(2, '0');
+    const m = Math.floor((totalSeconds % 3600) / 60).toString().padStart(2, '0');
+    const s = (totalSeconds % 60).toString().padStart(2, '0');
+    return `${h}:${m}:${s}`;
+  }
+
+  function tick() {
+    elapsed++;
+    display.textContent = formatTime(elapsed);
+  }
+
+  startBtn.addEventListener('click', () => {
+    if (!running) {
+      running = true;
+      interval = setInterval(tick, 1000);
+      startBtn.disabled = true;
+      pauseBtn.disabled = false;
+      stopBtn.disabled = false;
+    }
+  });
+
+  pauseBtn.addEventListener('click', () => {
+    if (running && interval) {
+      clearInterval(interval);
+      interval = null;
+      running = false;
+      startBtn.disabled = false;
+      pauseBtn.disabled = true;
+      startBtn.textContent = 'Resume';
+    }
+  });
+
+  stopBtn.addEventListener('click', () => {
+    if (interval) clearInterval(interval);
+    running = false;
+
+    const minutes = Math.max(1, Math.round(elapsed / 60));
+
+    // Fill the manual form with the elapsed minutes
+    const durationInput = document.getElementById('duration') as HTMLInputElement | null;
+    if (durationInput) {
+      durationInput.value = String(minutes);
+    }
+
+    // Reset timer
+    elapsed = 0;
+    display.textContent = formatTime(0);
+    startBtn.disabled = false;
+    startBtn.textContent = 'Start';
+    pauseBtn.disabled = true;
+    stopBtn.disabled = true;
+  });
+</script>

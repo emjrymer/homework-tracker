@@ -1,0 +1,163 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ProgressChart from '../../components/ProgressChart.astro';
+import { getDb } from '../../db/index';
+
+const user = Astro.locals.user!;
+const db = getDb();
+
+// Find linked student
+const linkResult = await db.execute({
+  sql: 'SELECT student_id FROM student_parent WHERE parent_id = ?',
+  args: [user.id],
+});
+
+if (linkResult.rows.length === 0) {
+  // No linked student yet
+}
+
+const studentId = linkResult.rows[0]?.student_id as string | undefined;
+
+let studentName = '';
+let weekMinutes = 0;
+let monthMinutes = 0;
+let chartData: { subject: string; minutes: number }[] = [];
+let recentLogs: any[] = [];
+let helpRequests: any[] = [];
+
+if (studentId) {
+  // Student name
+  const studentResult = await db.execute({ sql: 'SELECT name FROM users WHERE id = ?', args: [studentId] });
+  studentName = studentResult.rows[0]?.name as string ?? '';
+
+  // Week stats
+  const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+  const wResult = await db.execute({
+    sql: 'SELECT COALESCE(SUM(duration_minutes), 0) as total FROM time_logs WHERE student_id = ? AND logged_at >= ?',
+    args: [studentId, weekAgo],
+  });
+  weekMinutes = Number(wResult.rows[0].total);
+
+  // Month stats
+  const monthStart = new Date();
+  monthStart.setDate(1);
+  monthStart.setHours(0, 0, 0, 0);
+  const mResult = await db.execute({
+    sql: 'SELECT COALESCE(SUM(duration_minutes), 0) as total FROM time_logs WHERE student_id = ? AND logged_at >= ?',
+    args: [studentId, monthStart.toISOString()],
+  });
+  monthMinutes = Number(mResult.rows[0].total);
+
+  // Chart data
+  const subjectResult = await db.execute({
+    sql: 'SELECT subject, SUM(duration_minutes) as minutes FROM time_logs WHERE student_id = ? GROUP BY subject ORDER BY minutes DESC',
+    args: [studentId],
+  });
+  chartData = subjectResult.rows.map((r) => ({ subject: r.subject as string, minutes: Number(r.minutes) }));
+
+  // Recent logs
+  const logsResult = await db.execute({
+    sql: 'SELECT * FROM time_logs WHERE student_id = ? ORDER BY logged_at DESC LIMIT 10',
+    args: [studentId],
+  });
+  recentLogs = logsResult.rows as any[];
+
+  // Help requests
+  const hrResult = await db.execute({
+    sql: 'SELECT * FROM help_requests WHERE student_id = ? ORDER BY created_at DESC LIMIT 20',
+    args: [studentId],
+  });
+  helpRequests = hrResult.rows as any[];
+}
+---
+
+<BaseLayout title="Parent Dashboard">
+  <div class="page-header">
+    <h1>Parent Dashboard</h1>
+    {studentId ? (
+      <p>Viewing progress for <strong>{studentName}</strong></p>
+    ) : (
+      <p>No student linked to your account yet.</p>
+    )}
+  </div>
+
+  {!studentId ? (
+    <div class="card">
+      <p>Ask your student for their invite code and use it when registering your account to link it.</p>
+    </div>
+  ) : (
+    <>
+      <div class="stat-grid">
+        <div class="card stat-card">
+          <div class="stat-value">{(weekMinutes / 60).toFixed(1)}</div>
+          <div class="stat-label">Hours This Week</div>
+        </div>
+        <div class="card stat-card">
+          <div class="stat-value">{(monthMinutes / 60).toFixed(1)}</div>
+          <div class="stat-label">Hours This Month</div>
+        </div>
+      </div>
+
+      {chartData.length > 0 && <ProgressChart data={chartData} />}
+
+      <div class="card" style="margin-top: 1.5rem;">
+        <h3>Recent Study Sessions</h3>
+        {recentLogs.length === 0 ? (
+          <p style="color: var(--color-text-muted); margin-top: 0.5rem;">No study sessions logged yet.</p>
+        ) : (
+          <div class="table-wrap" style="margin-top: 0.5rem;">
+            <table>
+              <thead>
+                <tr><th>Date</th><th>Subject</th><th>Duration</th><th>Notes</th></tr>
+              </thead>
+              <tbody>
+                {recentLogs.map((log) => (
+                  <tr>
+                    <td>{new Date(log.logged_at as string).toLocaleDateString()}</td>
+                    <td>{log.subject}</td>
+                    <td>{log.duration_minutes}m</td>
+                    <td>{(log.notes as string)?.slice(0, 50) || '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      <div style="margin-top: 1.5rem;">
+        <h3>Help Requests</h3>
+        {helpRequests.length === 0 ? (
+          <p style="color: var(--color-text-muted); margin-top: 0.5rem;">No help requests.</p>
+        ) : (
+          <div style="margin-top: 0.75rem;">
+            {helpRequests.map((r) => (
+              <div class="card request-card" data-id={r.id}>
+                <div class="request-card-header">
+                  <div>
+                    <strong>{r.subject}</strong> — {r.topic}
+                  </div>
+                  <span class={`pill pill-${r.status}`}>{r.status}</span>
+                </div>
+                <div class="request-card-meta">
+                  <span><span class={`urgency-dot urgency-${r.urgency}`}></span>{r.urgency}</span>
+                  <span>{r.preferred_format}</span>
+                  <span>{new Date(r.created_at as string).toLocaleDateString()}</span>
+                </div>
+                <div class="request-card-body">
+                  <p>{r.message}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </>
+  )}
+</BaseLayout>
+
+<script>
+  document.querySelectorAll('.request-card').forEach((card) => {
+    card.addEventListener('click', () => card.classList.toggle('expanded'));
+  });
+</script>

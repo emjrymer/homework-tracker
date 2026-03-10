@@ -1,0 +1,71 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import Timer from '../../components/Timer.astro';
+import { SUBJECTS } from '../../lib/auth';
+---
+
+<BaseLayout title="Log Time">
+  <div class="page-header">
+    <h1>Log Study Time</h1>
+    <p>Use the stopwatch or enter time manually.</p>
+  </div>
+
+  <Timer />
+
+  <div class="card" style="margin-top: 1.5rem;">
+    <h3>Manual Entry</h3>
+    <div id="success-msg" class="alert alert-success" style="display:none"></div>
+    <div id="error-msg" class="alert alert-error" style="display:none"></div>
+
+    <form id="log-form" style="margin-top: 0.75rem;">
+      <div class="form-group">
+        <label for="subject">Subject</label>
+        <select id="subject" name="subject" required>
+          <option value="">Select a subject...</option>
+          {SUBJECTS.map((s) => <option value={s}>{s}</option>)}
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="duration">Minutes</label>
+        <input type="number" id="duration" name="duration" min="1" max="1440" required placeholder="e.g. 30" />
+      </div>
+      <div class="form-group">
+        <label for="notes">Notes (optional)</label>
+        <textarea id="notes" name="notes" maxlength="1000" placeholder="What did you work on?"></textarea>
+      </div>
+      <button type="submit" class="btn btn-primary">Save Entry</button>
+    </form>
+  </div>
+</BaseLayout>
+
+<script>
+  const form = document.getElementById('log-form') as HTMLFormElement;
+  const successMsg = document.getElementById('success-msg')!;
+  const errorMsg = document.getElementById('error-msg')!;
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    successMsg.style.display = 'none';
+    errorMsg.style.display = 'none';
+
+    const subject = (document.getElementById('subject') as HTMLSelectElement).value;
+    const duration_minutes = Number((document.getElementById('duration') as HTMLInputElement).value);
+    const notes = (document.getElementById('notes') as HTMLTextAreaElement).value;
+
+    const res = await fetch('/api/time-logs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ subject, duration_minutes, notes }),
+    });
+
+    if (res.ok) {
+      successMsg.textContent = `Logged ${duration_minutes} minutes of ${subject}!`;
+      successMsg.style.display = 'block';
+      form.reset();
+    } else {
+      const data = await res.json();
+      errorMsg.textContent = data.error || 'Failed to save.';
+      errorMsg.style.display = 'block';
+    }
+  });
+</script>

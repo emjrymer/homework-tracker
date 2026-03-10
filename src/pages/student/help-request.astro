@@ -1,0 +1,139 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import { SUBJECTS } from '../../lib/auth';
+import { getDb } from '../../db/index';
+
+const user = Astro.locals.user!;
+const db = getDb();
+
+const result = await db.execute({
+  sql: 'SELECT * FROM help_requests WHERE student_id = ? ORDER BY created_at DESC LIMIT 50',
+  args: [user.id],
+});
+const requests = result.rows;
+---
+
+<BaseLayout title="Request Help">
+  <div class="page-header">
+    <h1>Request Help</h1>
+    <p>Need tutoring or help? Fill out the form below.</p>
+  </div>
+
+  <div id="success-msg" class="alert alert-success" style="display:none"></div>
+  <div id="error-msg" class="alert alert-error" style="display:none"></div>
+
+  <div class="card">
+    <h3>New Request</h3>
+    <form id="help-form" style="margin-top: 0.75rem;">
+      <div class="form-group">
+        <label for="hr-subject">Subject</label>
+        <select id="hr-subject" required>
+          <option value="">Select a subject...</option>
+          {SUBJECTS.map((s) => <option value={s}>{s}</option>)}
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="hr-topic">Topic</label>
+        <input type="text" id="hr-topic" required maxlength="100" placeholder="e.g. quadratic equations, essay structure" />
+      </div>
+      <div class="form-group">
+        <label>Urgency</label>
+        <div class="radio-group">
+          <label><input type="radio" name="urgency" value="low" /> <span class="urgency-dot urgency-low"></span> Low</label>
+          <label><input type="radio" name="urgency" value="medium" checked /> <span class="urgency-dot urgency-medium"></span> Medium</label>
+          <label><input type="radio" name="urgency" value="high" /> <span class="urgency-dot urgency-high"></span> High</label>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Preferred Help Format</label>
+        <div class="radio-group">
+          <label><input type="radio" name="format" value="in-person" /> In-person</label>
+          <label><input type="radio" name="format" value="video-call" /> Video call</label>
+          <label><input type="radio" name="format" value="written" checked /> Written explanation</label>
+        </div>
+      </div>
+      <div class="form-group">
+        <label for="hr-message">Description</label>
+        <textarea id="hr-message" required maxlength="2000" placeholder="Describe what you're stuck on and what you've already tried…" style="min-height: 120px;"></textarea>
+      </div>
+      <button type="submit" class="btn btn-primary">Submit Request</button>
+    </form>
+  </div>
+
+  <div style="margin-top: 1.5rem;">
+    <h3>Your Requests</h3>
+    {requests.length === 0 ? (
+      <p style="color: var(--color-text-muted); margin-top: 0.5rem;">No help requests yet.</p>
+    ) : (
+      <div style="margin-top: 0.75rem;">
+        {requests.map((r) => (
+          <div class="card request-card" data-id={r.id}>
+            <div class="request-card-header">
+              <div>
+                <strong>{r.subject}</strong> — {r.topic}
+              </div>
+              <span class={`pill pill-${r.status}`}>{r.status}</span>
+            </div>
+            <div class="request-card-meta">
+              <span><span class={`urgency-dot urgency-${r.urgency}`}></span>{r.urgency}</span>
+              <span>{r.preferred_format}</span>
+              <span>{new Date(r.created_at as string).toLocaleDateString()}</span>
+            </div>
+            <div class="request-card-body">
+              <p>{r.message}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+    )}
+  </div>
+</BaseLayout>
+
+<script>
+  // Form submission
+  const form = document.getElementById('help-form') as HTMLFormElement;
+  const successMsg = document.getElementById('success-msg')!;
+  const errorMsg = document.getElementById('error-msg')!;
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    successMsg.style.display = 'none';
+    errorMsg.style.display = 'none';
+
+    const subject = (document.getElementById('hr-subject') as HTMLSelectElement).value;
+    const topic = (document.getElementById('hr-topic') as HTMLInputElement).value;
+    const message = (document.getElementById('hr-message') as HTMLTextAreaElement).value;
+    const urgency = (form.querySelector<HTMLInputElement>('input[name="urgency"]:checked'))?.value;
+    const preferred_format = (form.querySelector<HTMLInputElement>('input[name="format"]:checked'))?.value;
+
+    if (!subject || !topic || !message || !urgency || !preferred_format) {
+      errorMsg.textContent = 'All fields are required.';
+      errorMsg.style.display = 'block';
+      return;
+    }
+
+    const res = await fetch('/api/help-requests', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ subject, topic, message, urgency, preferred_format }),
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      successMsg.textContent = `Help request submitted! Your parent will be notified.`;
+      successMsg.style.display = 'block';
+      form.reset();
+      // Reload to show in history
+      setTimeout(() => window.location.reload(), 1000);
+    } else {
+      const data = await res.json();
+      errorMsg.textContent = data.error || 'Failed to submit.';
+      errorMsg.style.display = 'block';
+    }
+  });
+
+  // Expandable request cards
+  document.querySelectorAll('.request-card').forEach((card) => {
+    card.addEventListener('click', () => card.classList.toggle('expanded'));
+  });
+</script>

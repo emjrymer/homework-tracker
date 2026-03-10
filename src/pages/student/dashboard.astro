@@ -1,0 +1,125 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ProgressChart from '../../components/ProgressChart.astro';
+import { getDb } from '../../db/index';
+
+const user = Astro.locals.user!;
+const db = getDb();
+
+// Stats: this week
+const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+const weekResult = await db.execute({
+  sql: 'SELECT COALESCE(SUM(duration_minutes), 0) as total FROM time_logs WHERE student_id = ? AND logged_at >= ?',
+  args: [user.id, weekAgo],
+});
+const weekMinutes = Number(weekResult.rows[0].total);
+
+// Stats: this month
+const monthStart = new Date();
+monthStart.setDate(1);
+monthStart.setHours(0, 0, 0, 0);
+const monthResult = await db.execute({
+  sql: 'SELECT COALESCE(SUM(duration_minutes), 0) as total FROM time_logs WHERE student_id = ? AND logged_at >= ?',
+  args: [user.id, monthStart.toISOString()],
+});
+const monthMinutes = Number(monthResult.rows[0].total);
+
+// Pending help requests
+const pendingResult = await db.execute({
+  sql: "SELECT COUNT(*) as cnt FROM help_requests WHERE student_id = ? AND status = 'pending'",
+  args: [user.id],
+});
+const pendingCount = Number(pendingResult.rows[0].cnt);
+
+// Hours by subject (all time)
+const subjectResult = await db.execute({
+  sql: 'SELECT subject, SUM(duration_minutes) as minutes FROM time_logs WHERE student_id = ? GROUP BY subject ORDER BY minutes DESC',
+  args: [user.id],
+});
+const chartData = subjectResult.rows.map((r) => ({
+  subject: r.subject as string,
+  minutes: Number(r.minutes),
+}));
+
+// Recent logs
+const recentLogs = await db.execute({
+  sql: 'SELECT * FROM time_logs WHERE student_id = ? ORDER BY logged_at DESC LIMIT 5',
+  args: [user.id],
+});
+
+// Get invite code
+const inviteResult = await db.execute({
+  sql: 'SELECT invite_code FROM users WHERE id = ?',
+  args: [user.id],
+});
+const inviteCode = inviteResult.rows[0]?.invite_code as string | null;
+---
+
+<BaseLayout title="Dashboard">
+  <div class="page-header">
+    <h1>Hi, {user.name}!</h1>
+    <p>Here's your homework summary.</p>
+  </div>
+
+  <div class="quick-actions">
+    <a href="/student/log-time" class="btn btn-primary">Log Time</a>
+    <a href="/student/help-request" class="btn btn-secondary">Request Help</a>
+  </div>
+
+  <div class="stat-grid">
+    <div class="card stat-card">
+      <div class="stat-value">{(weekMinutes / 60).toFixed(1)}</div>
+      <div class="stat-label">Hours This Week</div>
+    </div>
+    <div class="card stat-card">
+      <div class="stat-value">{(monthMinutes / 60).toFixed(1)}</div>
+      <div class="stat-label">Hours This Month</div>
+    </div>
+    <div class="card stat-card">
+      <div class="stat-value">{pendingCount}</div>
+      <div class="stat-label">Pending Help Requests</div>
+    </div>
+  </div>
+
+  {chartData.length > 0 && <ProgressChart data={chartData} />}
+
+  <div class="card" style="margin-top: 1.5rem;">
+    <h3>Recent Logs</h3>
+    {recentLogs.rows.length === 0 ? (
+      <p style="color: var(--color-text-muted); margin-top: 0.5rem;">No time logged yet. <a href="/student/log-time">Log your first session!</a></p>
+    ) : (
+      <div class="table-wrap" style="margin-top: 0.5rem;">
+        <table>
+          <thead>
+            <tr><th>Subject</th><th>Duration</th><th>Date</th><th>Notes</th></tr>
+          </thead>
+          <tbody>
+            {recentLogs.rows.map((log) => (
+              <tr>
+                <td>{log.subject}</td>
+                <td>{log.duration_minutes}m</td>
+                <td>{new Date(log.logged_at as string).toLocaleDateString()}</td>
+                <td>{(log.notes as string)?.slice(0, 50) || '—'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    )}
+    <div style="margin-top: 0.75rem;">
+      <a href="/student/history" style="font-size: 0.9rem;">View full history →</a>
+    </div>
+  </div>
+
+  {inviteCode && (
+    <div class="card" style="margin-top: 1.5rem;">
+      <h3>Parent Invite Code</h3>
+      <p style="margin-top: 0.25rem; color: var(--color-text-muted); font-size: 0.9rem;">
+        Share this code with your parent so they can create an account and view your progress.
+      </p>
+      <div style="margin-top: 0.5rem; font-size: 1.5rem; font-weight: 700; letter-spacing: 0.1em; color: var(--color-primary);">
+        {inviteCode}
+      </div>
+    </div>
+  )}
+</BaseLayout>

@@ -1,0 +1,53 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import { getDb } from '../../db/index';
+
+const user = Astro.locals.user!;
+const db = getDb();
+
+const result = await db.execute({
+  sql: 'SELECT * FROM time_logs WHERE student_id = ? ORDER BY logged_at DESC LIMIT 200',
+  args: [user.id],
+});
+const logs = result.rows;
+
+const totalMinutes = logs.reduce((sum, l) => sum + Number(l.duration_minutes), 0);
+---
+
+<BaseLayout title="History">
+  <div class="page-header">
+    <h1>Study History</h1>
+    <p>Total: {(totalMinutes / 60).toFixed(1)} hours across {logs.length} sessions</p>
+  </div>
+
+  {logs.length === 0 ? (
+    <div class="card">
+      <p style="color: var(--color-text-muted);">No time logged yet. <a href="/student/log-time">Start tracking!</a></p>
+    </div>
+  ) : (
+    <div class="card">
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Subject</th>
+              <th>Duration</th>
+              <th>Notes</th>
+            </tr>
+          </thead>
+          <tbody>
+            {logs.map((log) => (
+              <tr>
+                <td>{new Date(log.logged_at as string).toLocaleDateString()}</td>
+                <td>{log.subject}</td>
+                <td>{log.duration_minutes}m</td>
+                <td>{(log.notes as string) || '—'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )}
+</BaseLayout>
